@@ -1,0 +1,119 @@
+#include <iostream>
+#include <vector>
+#include <stdio.h>
+#include <cmath>
+#include <algorithm>
+#include <unistd.h>
+#include <sched.h>
+#include <sys/sysctl.h>
+#include <sys/types.h>
+
+using namespace std;
+
+struct Point {
+    int id;
+    double x, y;
+    int val;
+};
+
+double calculateMean(vector<double> &values) {
+    double sum = 0.0;
+    for (double value : values) {
+        sum += value;
+    }
+    return sum / values.size();
+}
+
+double calculateStandardDeviation(vector<double> &values, double mean) {
+    double variance = 0.0;
+    for (double value : values) {
+        variance += pow(value - mean, 2);
+    }
+    variance /= values.size();
+    return sqrt(variance);
+}
+
+int classifyAPoint(vector<Point> &arr, Point p) {
+    vector<double> x_class0, y_class0, x_class1, y_class1;
+
+    for (Point point : arr) {
+        if (point.val == 0) {
+            x_class0.push_back(point.x);
+            y_class0.push_back(point.y);
+        } else {
+            x_class1.push_back(point.x);
+            y_class1.push_back(point.y);
+        }
+    }
+
+    double mean_x_class0 = calculateMean(x_class0);
+    double stdev_x_class0 = calculateStandardDeviation(x_class0, mean_x_class0);
+    double mean_y_class0 = calculateMean(y_class0);
+    double stdev_y_class0 = calculateStandardDeviation(y_class0, mean_y_class0);
+
+    double mean_x_class1 = calculateMean(x_class1);
+    double stdev_x_class1 = calculateStandardDeviation(x_class1, mean_x_class1);
+    double mean_y_class1 = calculateMean(y_class1);
+    double stdev_y_class1 = calculateStandardDeviation(y_class1, mean_y_class1);
+
+    double likelihood_class0 = exp(-0.5 * (pow((p.x - mean_x_class0) / stdev_x_class0, 2) + pow((p.y - mean_y_class0) / stdev_y_class0, 2)));
+    double likelihood_class1 = exp(-0.5 * (pow((p.x - mean_x_class1) / stdev_x_class1, 2) + pow((p.y - mean_y_class1) / stdev_y_class1, 2)));
+
+    // Prior probabilities (assumed equal in this basic example)
+    double prior_class0 = static_cast<double>(x_class0.size()) / arr.size();
+    double prior_class1 = static_cast<double>(x_class1.size()) / arr.size();
+
+    // Posterior probabilities
+    double posterior_class0 = likelihood_class0 * prior_class0;
+    double posterior_class1 = likelihood_class1 * prior_class1;
+
+    return (posterior_class0 > posterior_class1) ? 0 : 1;
+}
+
+int main() {
+    vector<Point> arr = {
+        {1, 1, 12, 0}, {2, 2, 5, 0}, {3, 5, 3, 1}, {4, 3, 2, 1}, {5, 3, 6, 0},
+        {6, 1.5, 9, 1}, {7, 7, 2, 1}, {8, 6, 1, 1}, {9, 3.8, 3, 1}, {10, 3, 10, 0},
+        {11, 5.6, 4, 1}, {12, 4, 2, 1}, {13, 3.5, 8, 0}, {14, 2, 11, 0}, {15, 2, 5, 1},
+        {16, 2, 9, 0}, {17, 1, 7, 0}
+    };
+
+    pid_t pid;
+    int k = 5;
+    int num_cores = sysconf(_SC_NPROCESSORS_ONLN); // Get the number of available CPU cores
+
+    for (int core = 0; core < num_cores; core++) {
+        pid = fork();
+        
+        if (pid == 0) {
+            // This is the child process
+            cpu_set_t mask;
+            CPU_ZERO(&mask);
+            CPU_SET(core, &mask);
+
+            if (sched_setaffinity(0, sizeof(mask), &mask) == -1) {
+                perror("sched_setaffinity");
+            }
+
+            // Now each child process can work on a specific core
+            printf("PID : %d\n", getpid());
+            printf("Core Number: %d\n", sched_getcpu());
+
+            // You can call classifyAPoint here with the data you want to classify
+            
+    Point p;
+    p.x = 2.5;
+    p.y = 4;
+
+    int predicted_class = classifyAPoint(arr, p);
+    cout << "The predicted class :  " << predicted_class << endl;
+        } else if (pid < 0) {
+            perror("fork");
+        }
+    }
+
+    // The parent process doesn't do anything, just waits for children to finish
+
+
+    return 0;
+}
